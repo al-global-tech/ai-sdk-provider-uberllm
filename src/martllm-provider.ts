@@ -13,13 +13,13 @@ import {
   withoutTrailingSlash,
 } from '@ai-sdk/provider-utils';
 
-export const UBERLLM_BASE_URL = 'https://api.uberllm.dev/v1';
+export const MARTLLM_BASE_URL = 'https://api.martllm.com/v1';
 
 /**
- * Chat model ids. Any id from https://uberllm.dev/models works; the named
+ * Chat model ids. Any id from https://martllm.com/models works; the named
  * ones are only for editor autocomplete.
  */
-export type UberLLMChatModelId =
+export type MartLLMChatModelId =
   | 'deepseek/deepseek-v4-flash'
   | 'deepseek/deepseek-v4.1-flash'
   | 'anthropic/claude-opus-5.5'
@@ -35,9 +35,9 @@ export type UberLLMChatModelId =
 
 /**
  * Image model ids for `generateImage`. Any image id from
- * https://uberllm.dev/models that takes /v1/images/generations works.
+ * https://martllm.com/models that takes /v1/images/generations works.
  */
-export type UberLLMImageModelId =
+export type MartLLMImageModelId =
   | 'black-forest-labs/flux.2-klein-4b'
   | 'black-forest-labs/flux.2-flex'
   | 'bytedance/seedream-4.5'
@@ -46,22 +46,22 @@ export type UberLLMImageModelId =
   | 'venice/z-image-turbo'
   | (string & {});
 
-export interface UberLLMProviderSettings {
+export interface MartLLMProviderSettings {
   /**
-   * UberLLM API key (`ull_...`). Defaults to the `UBERLLM_API_KEY`
+   * MartLLM API key (`ull_...`). Defaults to the `MARTLLM_API_KEY`
    * environment variable. A function is called before each request and may
    * return a promise.
    */
   apiKey?: Resolvable<string | undefined>;
 
   /**
-   * Base URL for API calls. Defaults to `https://api.uberllm.dev/v1`.
+   * Base URL for API calls. Defaults to `https://api.martllm.com/v1`.
    */
   baseURL?: string;
 
   /**
    * Your app's name, sent as `X-Title`. Apps that send it can be listed on
-   * https://uberllm.dev/apps.
+   * https://martllm.com/apps.
    */
   appName?: string;
 
@@ -88,20 +88,20 @@ export interface UberLLMProviderSettings {
   fetch?: FetchFunction;
 }
 
-export interface UberLLMProvider extends ProviderV4 {
+export interface MartLLMProvider extends ProviderV4 {
   /** A chat model (`/v1/chat/completions`). */
-  (modelId: UberLLMChatModelId): LanguageModelV4;
+  (modelId: MartLLMChatModelId): LanguageModelV4;
 
   /** A chat model (`/v1/chat/completions`). */
-  languageModel(modelId: UberLLMChatModelId): LanguageModelV4;
+  languageModel(modelId: MartLLMChatModelId): LanguageModelV4;
 
   /** A chat model (`/v1/chat/completions`). */
-  chatModel(modelId: UberLLMChatModelId): LanguageModelV4;
+  chatModel(modelId: MartLLMChatModelId): LanguageModelV4;
 
   /** An image model (`/v1/images/generations`), for `generateImage`. */
-  imageModel(modelId: UberLLMImageModelId): ImageModelV4;
+  imageModel(modelId: MartLLMImageModelId): ImageModelV4;
 
-  /** UberLLM has no embeddings endpoint; this always throws. */
+  /** MartLLM has no embeddings endpoint; this always throws. */
   embeddingModel(modelId: string): never;
 
   /** @deprecated Use `embeddingModel` instead. Always throws. */
@@ -109,19 +109,25 @@ export interface UberLLMProvider extends ProviderV4 {
 }
 
 /**
- * Create an UberLLM provider for the Vercel AI SDK.
+ * Create a MartLLM provider for the Vercel AI SDK.
  *
  * ```ts
- * import { createUberLLM } from '@uberllm/ai-sdk-provider';
- * const uberllm = createUberLLM({ apiKey: process.env.UBERLLM_API_KEY });
+ * import { createMartLLM } from 'ai-sdk-provider-martllm';
+ * const martllm = createMartLLM({ apiKey: process.env.MARTLLM_API_KEY });
  * ```
  */
-export function createUberLLM(
-  options: UberLLMProviderSettings = {},
-): UberLLMProvider {
+/** UBERLLM_API_KEY (the name before the rename), only when MARTLLM_API_KEY is unset. */
+function oldEnvKey(): string | undefined {
+  if (typeof process === 'undefined') return undefined;
+  return process.env?.MARTLLM_API_KEY ? undefined : process.env?.UBERLLM_API_KEY || undefined;
+}
+
+export function createMartLLM(
+  options: MartLLMProviderSettings = {},
+): MartLLMProvider {
   const baseURL =
-    withoutTrailingSlash(options.baseURL ?? UBERLLM_BASE_URL) ??
-    UBERLLM_BASE_URL;
+    withoutTrailingSlash(options.baseURL ?? MARTLLM_BASE_URL) ??
+    MARTLLM_BASE_URL;
 
   const headers: Record<string, string> = {
     ...(options.appName ? { 'X-Title': options.appName } : {}),
@@ -130,19 +136,19 @@ export function createUberLLM(
   };
 
   const base = createOpenAICompatible<
-    UberLLMChatModelId,
+    MartLLMChatModelId,
     string,
     string,
-    UberLLMImageModelId
+    MartLLMImageModelId
   >({
-    name: 'uberllm',
+    name: 'martllm',
     baseURL,
     // Read lazily, so importing the default instance never throws.
     apiKey: async () =>
       loadApiKey({
-        apiKey: await resolve(options.apiKey),
-        environmentVariableName: 'UBERLLM_API_KEY',
-        description: 'UberLLM',
+        apiKey: (await resolve(options.apiKey)) ?? oldEnvKey(),
+        environmentVariableName: 'MARTLLM_API_KEY',
+        description: 'MartLLM',
       }),
     headers,
     includeUsage: true,
@@ -154,12 +160,12 @@ export function createUberLLM(
     throw new NoSuchModelError({
       modelId,
       modelType: 'embeddingModel',
-      message: 'UberLLM has no embeddings endpoint.',
+      message: 'MartLLM has no embeddings endpoint.',
     });
   };
 
-  const provider = ((modelId: UberLLMChatModelId) =>
-    base.chatModel(modelId)) as UberLLMProvider;
+  const provider = ((modelId: MartLLMChatModelId) =>
+    base.chatModel(modelId)) as MartLLMProvider;
   (provider as { specificationVersion: 'v4' }).specificationVersion = 'v4';
   provider.languageModel = (modelId) => base.chatModel(modelId);
   provider.chatModel = (modelId) => base.chatModel(modelId);
@@ -170,7 +176,11 @@ export function createUberLLM(
 }
 
 /**
- * Default UberLLM provider. Reads the key from `UBERLLM_API_KEY` when a
+ * Default MartLLM provider. Reads the key from `MARTLLM_API_KEY` when a
  * request is made.
  */
-export const uberllm = createUberLLM();
+export const martllm = createMartLLM();
+
+/** Old names (MartLLM was called UberLLM until November 2026). */
+export const createUberLLM = createMartLLM;
+export const uberllm = martllm;

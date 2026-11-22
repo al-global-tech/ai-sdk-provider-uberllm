@@ -1,7 +1,7 @@
 import { type FetchFunction, withoutTrailingSlash } from '@ai-sdk/provider-utils';
-import { UBERLLM_BASE_URL } from './uberllm-provider';
+import { MARTLLM_BASE_URL } from './martllm-provider';
 
-export interface UberLLMModelPricing {
+export interface MartLLMModelPricing {
   /** USD per 1M input tokens (chat models). */
   input_usd?: number;
   /** USD per 1M output tokens (chat models). */
@@ -16,7 +16,7 @@ export interface UberLLMModelPricing {
   [key: string]: unknown;
 }
 
-export interface UberLLMModel {
+export interface MartLLMModel {
   id: string;
   type?: string;
   display_name?: string;
@@ -27,14 +27,14 @@ export interface UberLLMModel {
   supports_vision?: boolean;
   supports_reasoning?: boolean;
   available?: boolean;
-  pricing?: UberLLMModelPricing;
+  pricing?: MartLLMModelPricing;
   [key: string]: unknown;
 }
 
 export interface ListModelsOptions {
   /** `chat` (default), `image`, `video`, `music`, `audio` or `all`. */
   type?: 'chat' | 'image' | 'video' | 'music' | 'audio' | 'all';
-  /** Optional: the catalog is public. Defaults to `UBERLLM_API_KEY` if set. */
+  /** Optional: the catalog is public. Defaults to `MARTLLM_API_KEY` if set. */
   apiKey?: string;
   baseURL?: string;
   fetch?: FetchFunction;
@@ -42,20 +42,20 @@ export interface ListModelsOptions {
 }
 
 /**
- * The live UberLLM model catalog (`GET /v1/models`), with prices.
- * Same data as https://uberllm.dev/models.
+ * The live MartLLM model catalog (`GET /v1/models`), with prices.
+ * Same data as https://martllm.com/models.
  */
 export async function listModels(
   options: ListModelsOptions = {},
-): Promise<UberLLMModel[]> {
-  const baseURL = withoutTrailingSlash(options.baseURL ?? UBERLLM_BASE_URL);
+): Promise<MartLLMModel[]> {
+  const baseURL = withoutTrailingSlash(options.baseURL ?? MARTLLM_BASE_URL);
   const url = new URL(`${baseURL}/models`);
   if (options.type && options.type !== 'chat') {
     url.searchParams.set('type', options.type);
   }
   const key =
     options.apiKey ??
-    (typeof process !== 'undefined' ? process.env?.UBERLLM_API_KEY : undefined);
+    (typeof process !== 'undefined' ? process.env?.MARTLLM_API_KEY || process.env?.UBERLLM_API_KEY : undefined);
   const doFetch = options.fetch ?? globalThis.fetch;
   const res = await doFetch(url.toString(), {
     headers: key ? { Authorization: `Bearer ${key}` } : {},
@@ -63,9 +63,9 @@ export async function listModels(
   });
   if (!res.ok) {
     throw new Error(
-      `UberLLM GET /v1/models failed: ${res.status} ${await res.text()}`,
+      `MartLLM GET /v1/models failed: ${res.status} ${await res.text()}`,
     );
   }
-  const body = (await res.json()) as { data?: UberLLMModel[] };
+  const body = (await res.json()) as { data?: MartLLMModel[] };
   return body.data ?? [];
 }

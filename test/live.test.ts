@@ -1,17 +1,17 @@
-// Live tests against https://api.uberllm.dev. Skipped without UBERLLM_API_KEY.
+// Live tests against https://api.martllm.com. Skipped without MARTLLM_API_KEY.
 // A few small requests plus one low-cost image (about two US cents in all).
 import { generateImage, generateText, Output, stepCountIs, streamText, tool } from 'ai';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { listModels, uberllm } from '../src/index';
+import { listModels, martllm } from '../src/index';
 
-const MODEL = process.env.UBERLLM_TEST_MODEL ?? 'deepseek/deepseek-v4-flash';
-const live = describe.skipIf(!process.env.UBERLLM_API_KEY);
+const MODEL = process.env.MARTLLM_TEST_MODEL ?? 'deepseek/deepseek-v4-flash';
+const live = describe.skipIf(!process.env.MARTLLM_API_KEY);
 
-live('UberLLM live', () => {
+live('MartLLM live', () => {
   it('generateText', async () => {
     const { text, usage } = await generateText({
-      model: uberllm(MODEL),
+      model: martllm(MODEL),
       prompt: 'Reply with exactly the word: pong',
     });
     expect(text.toLowerCase()).toContain('pong');
@@ -19,7 +19,7 @@ live('UberLLM live', () => {
   }, 60_000);
 
   it('streamText with usage', async () => {
-    const result = streamText({ model: uberllm(MODEL), prompt: 'Count from 1 to 5.' });
+    const result = streamText({ model: martllm(MODEL), prompt: 'Count from 1 to 5.' });
     let text = '';
     for await (const d of result.textStream) text += d;
     expect(text).toContain('5');
@@ -28,7 +28,7 @@ live('UberLLM live', () => {
 
   it('tool calls', async () => {
     const { text, steps } = await generateText({
-      model: uberllm(MODEL),
+      model: martllm(MODEL),
       tools: {
         weather: tool({
           description: 'Get the current temperature in a city, in Celsius',
@@ -45,7 +45,7 @@ live('UberLLM live', () => {
 
   it('structured output', async () => {
     const { output } = await generateText({
-      model: uberllm(MODEL),
+      model: martllm(MODEL),
       output: Output.object({ schema: z.object({ name: z.string(), age: z.number() }) }),
       prompt: 'Ada is 36 years old. Extract the person.',
     });
@@ -55,7 +55,7 @@ live('UberLLM live', () => {
 
   it('generateImage', async () => {
     const { image } = await generateImage({
-      model: uberllm.imageModel('black-forest-labs/flux.2-klein-4b'),
+      model: martllm.imageModel('black-forest-labs/flux.2-klein-4b'),
       prompt: 'A red bicycle on a white background',
       size: '1024x1024',
     });

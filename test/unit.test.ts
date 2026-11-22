@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { generateImage, generateText, Output, streamText } from 'ai';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { createUberLLM, listModels, uberllm, VERSION } from '../src/index';
+import { createMartLLM, createUberLLM, listModels, martllm, VERSION } from '../src/index';
 
 type Call = { url: string; headers: Record<string, string>; body: any };
 
@@ -35,19 +35,24 @@ const chatCompletion = (content: string) =>
   });
 
 let savedKey: string | undefined;
+let savedOldKey: string | undefined;
 beforeEach(() => {
-  savedKey = process.env.UBERLLM_API_KEY;
+  savedKey = process.env.MARTLLM_API_KEY;
+  savedOldKey = process.env.UBERLLM_API_KEY;
+  delete process.env.MARTLLM_API_KEY;
   delete process.env.UBERLLM_API_KEY;
 });
 afterEach(() => {
-  if (savedKey === undefined) delete process.env.UBERLLM_API_KEY;
-  else process.env.UBERLLM_API_KEY = savedKey;
+  if (savedKey === undefined) delete process.env.MARTLLM_API_KEY;
+  else process.env.MARTLLM_API_KEY = savedKey;
+  if (savedOldKey === undefined) delete process.env.UBERLLM_API_KEY;
+  else process.env.UBERLLM_API_KEY = savedOldKey;
 });
 
-describe('createUberLLM', () => {
-  it('sends chat requests to UberLLM with the key and identifying headers', async () => {
+describe('createMartLLM', () => {
+  it('sends chat requests to MartLLM with the key and identifying headers', async () => {
     const { fetch, calls } = fakeFetch(() => chatCompletion('hello'));
-    const p = createUberLLM({
+    const p = createMartLLM({
       apiKey: 'ull_test',
       appName: 'My App',
       appUrl: 'https://example.com',
@@ -59,40 +64,51 @@ describe('createUberLLM', () => {
     });
     expect(text).toBe('hello');
     expect(usage.totalTokens).toBe(8);
-    expect(calls[0].url).toBe('https://api.uberllm.dev/v1/chat/completions');
+    expect(calls[0].url).toBe('https://api.martllm.com/v1/chat/completions');
     expect(calls[0].headers.authorization).toBe('Bearer ull_test');
     expect(calls[0].headers['x-title']).toBe('My App');
     expect(calls[0].headers['http-referer']).toBe('https://example.com');
     expect(calls[0].body.model).toBe('deepseek/deepseek-v4-flash');
   });
 
-  it('reads UBERLLM_API_KEY when the request is made, not at import', async () => {
+  it('reads MARTLLM_API_KEY when the request is made, not at import', async () => {
     const { fetch, calls } = fakeFetch(() => chatCompletion('ok'));
-    const p = createUberLLM({ fetch }); // no key yet: must not throw
-    process.env.UBERLLM_API_KEY = 'ull_env';
+    const p = createMartLLM({ fetch }); // no key yet: must not throw
+    process.env.MARTLLM_API_KEY = 'ull_env';
     await generateText({ model: p('m'), prompt: 'hi' });
     expect(calls[0].headers.authorization).toBe('Bearer ull_env');
   });
 
+  it('still reads UBERLLM_API_KEY (the old name) when MARTLLM_API_KEY is unset', async () => {
+    const { fetch, calls } = fakeFetch(() => chatCompletion('ok'));
+    const p = createUberLLM({ fetch });
+    process.env.UBERLLM_API_KEY = 'ull_old';
+    await generateText({ model: p('m'), prompt: 'hi' });
+    expect(calls[0].headers.authorization).toBe('Bearer ull_old');
+    process.env.MARTLLM_API_KEY = 'ull_new';
+    await generateText({ model: p('m'), prompt: 'hi' });
+    expect(calls[1].headers.authorization).toBe('Bearer ull_new');
+  });
+
   it('accepts an async key function', async () => {
     const { fetch, calls } = fakeFetch(() => chatCompletion('ok'));
-    const p = createUberLLM({ apiKey: async () => 'ull_fn', fetch });
+    const p = createMartLLM({ apiKey: async () => 'ull_fn', fetch });
     await generateText({ model: p.chatModel('m'), prompt: 'hi' });
     expect(calls[0].headers.authorization).toBe('Bearer ull_fn');
   });
 
   it('fails with a clear error when there is no key', async () => {
     const { fetch, calls } = fakeFetch(() => chatCompletion('ok'));
-    const p = createUberLLM({ fetch });
+    const p = createMartLLM({ fetch });
     await expect(
       generateText({ model: p('m'), prompt: 'hi', maxRetries: 0 }),
-    ).rejects.toThrow(/UBERLLM_API_KEY/);
+    ).rejects.toThrow(/MARTLLM_API_KEY/);
     expect(calls).toHaveLength(0);
   });
 
   it('honours a custom baseURL (trailing slash removed)', async () => {
     const { fetch, calls } = fakeFetch(() => chatCompletion('ok'));
-    const p = createUberLLM({ apiKey: 'k', baseURL: 'https://proxy.test/v1/', fetch });
+    const p = createMartLLM({ apiKey: 'k', baseURL: 'https://proxy.test/v1/', fetch });
     await generateText({ model: p.languageModel('m'), prompt: 'hi' });
     expect(calls[0].url).toBe('https://proxy.test/v1/chat/completions');
   });
@@ -108,7 +124,7 @@ describe('createUberLLM', () => {
     const { fetch, calls } = fakeFetch(
       () => new Response(sse, { headers: { 'content-type': 'text/event-stream' } }),
     );
-    const p = createUberLLM({ apiKey: 'k', fetch });
+    const p = createMartLLM({ apiKey: 'k', fetch });
     const result = streamText({ model: p('m'), prompt: 'hi' });
     let text = '';
     for await (const d of result.textStream) text += d;
@@ -120,7 +136,7 @@ describe('createUberLLM', () => {
 
   it('sends json_schema for structured output', async () => {
     const { fetch, calls } = fakeFetch(() => chatCompletion('{"name":"Ada","age":36}'));
-    const p = createUberLLM({ apiKey: 'k', fetch });
+    const p = createMartLLM({ apiKey: 'k', fetch });
     const { output } = await generateText({
       model: p('m'),
       output: Output.object({ schema: z.object({ name: z.string(), age: z.number() }) }),
@@ -130,14 +146,14 @@ describe('createUberLLM', () => {
     expect(calls[0].body.response_format.type).toBe('json_schema');
   });
 
-  it('passes UberLLM routing options through providerOptions.uberllm', async () => {
+  it('passes MartLLM routing options through providerOptions.martllm', async () => {
     const { fetch, calls } = fakeFetch(() => chatCompletion('ok'));
-    const p = createUberLLM({ apiKey: 'k', fetch });
+    const p = createMartLLM({ apiKey: 'k', fetch });
     await generateText({
       model: p('m'),
       prompt: 'hi',
       providerOptions: {
-        uberllm: { provider: { max_price: { prompt: 0.2, completion: 0.4 } } },
+        martllm: { provider: { max_price: { prompt: 0.2, completion: 0.4 } } },
       },
     });
     expect(calls[0].body.provider).toEqual({ max_price: { prompt: 0.2, completion: 0.4 } });
@@ -148,25 +164,25 @@ describe('createUberLLM', () => {
     const { fetch, calls } = fakeFetch(() =>
       Response.json({ created: 1, data: [{ b64_json: png }] }),
     );
-    const p = createUberLLM({ apiKey: 'k', fetch });
+    const p = createMartLLM({ apiKey: 'k', fetch });
     const { image } = await generateImage({
       model: p.imageModel('black-forest-labs/flux.2-klein-4b'),
       prompt: 'a red bicycle',
       size: '1024x1024',
     });
     expect(Buffer.from(image.uint8Array).toString()).toBe('fake-png');
-    expect(calls[0].url).toBe('https://api.uberllm.dev/v1/images/generations');
+    expect(calls[0].url).toBe('https://api.martllm.com/v1/images/generations');
     expect(calls[0].body.model).toBe('black-forest-labs/flux.2-klein-4b');
   });
 
   it('has no embeddings model', () => {
-    expect(() => uberllm.embeddingModel('x')).toThrow(/no embeddings/);
-    expect(() => uberllm.textEmbeddingModel('x')).toThrow(/no embeddings/);
+    expect(() => martllm.embeddingModel('x')).toThrow(/no embeddings/);
+    expect(() => martllm.textEmbeddingModel('x')).toThrow(/no embeddings/);
   });
 
-  it('identifies as the uberllm provider', () => {
-    expect(uberllm('m').provider).toBe('uberllm.chat');
-    expect(uberllm.specificationVersion).toBe('v4');
+  it('identifies as the martllm provider', () => {
+    expect(martllm('m').provider).toBe('martllm.chat');
+    expect(martllm.specificationVersion).toBe('v4');
   });
 });
 
@@ -176,10 +192,10 @@ describe('listModels', () => {
       Response.json({ data: [{ id: 'deepseek/deepseek-v4-flash' }] }),
     );
     expect(await listModels({ fetch })).toEqual([{ id: 'deepseek/deepseek-v4-flash' }]);
-    expect(calls[0].url).toBe('https://api.uberllm.dev/v1/models');
+    expect(calls[0].url).toBe('https://api.martllm.com/v1/models');
     expect(calls[0].headers.authorization).toBeUndefined();
     await listModels({ fetch, type: 'image', apiKey: 'k' });
-    expect(calls[1].url).toBe('https://api.uberllm.dev/v1/models?type=image');
+    expect(calls[1].url).toBe('https://api.martllm.com/v1/models?type=image');
     expect(calls[1].headers.authorization).toBe('Bearer k');
   });
 

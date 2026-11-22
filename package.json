@@ -1,19 +1,19 @@
 {
-  "name": "@uberllm/ai-sdk-provider",
+  "name": "ai-sdk-provider-martllm",
   "version": "0.1.0",
-  "description": "UberLLM provider for the Vercel AI SDK: hundreds of chat models and image models with one OpenAI-compatible API key.",
+  "description": "MartLLM provider for the Vercel AI SDK: hundreds of chat models and image models with one OpenAI-compatible API key.",
   "license": "MIT",
   "author": "AL Global LLC <support@uberllm.dev>",
-  "homepage": "https://uberllm.dev/docs/ai-sdk",
+  "homepage": "https://martllm.com/docs/ai-sdk",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/PSA-Team-source/ai-sdk-provider-uberllm.git"
+    "url": "git+https://github.com/al-global-tech/ai-sdk-provider-uberllm.git"
   },
   "bugs": {
-    "url": "https://github.com/PSA-Team-source/ai-sdk-provider-uberllm/issues"
+    "url": "https://github.com/al-global-tech/ai-sdk-provider-uberllm/issues"
   },
   "keywords": [
-    "uberllm",
+    "martllm",
     "ai",
     "ai-sdk",
     "vercel-ai-sdk",

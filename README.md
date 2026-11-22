@@ -23,7 +23,7 @@ npm i ai-sdk-provider-martllm ai zod
 Until the package is on npm, install it from GitHub (it builds on install):
 
 ```sh
-npm i github:PSA-Team-source/ai-sdk-provider-martllm ai zod
+npm i github:al-global-tech/ai-sdk-provider-uberllm ai zod
 ```
 
 Requires `ai` 7 and Node.js 22 or later (ESM).

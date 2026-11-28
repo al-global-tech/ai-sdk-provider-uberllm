@@ -9,8 +9,11 @@ export type {
   MartLLMProvider,
   MartLLMProviderSettings,
   MartLLMChatModelId,
+  MartLLMEmbeddingModelId,
   MartLLMImageModelId,
 } from './martllm-provider';
+export { MartLLMVideoModel } from './video-model';
+export type { MartLLMVideoModelId } from './video-model';
 export { listModels } from './models';
 export type {
   ListModelsOptions,

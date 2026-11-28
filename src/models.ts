@@ -32,9 +32,15 @@ export interface MartLLMModel {
 }
 
 export interface ListModelsOptions {
-  /** `chat` (default), `image`, `video`, `music`, `audio` or `all`. */
-  type?: 'chat' | 'image' | 'video' | 'music' | 'audio' | 'all';
-  /** Optional: the catalog is public. Defaults to `MARTLLM_API_KEY` if set. */
+  /**
+   * `chat` (default), `image`, `video`, `music`, `speech`, `transcription`,
+   * `embedding` or `all`.
+   */
+  type?: 'chat' | 'image' | 'video' | 'music' | 'speech' | 'transcription' | 'embedding' | 'all';
+  /**
+   * Defaults to `MARTLLM_API_KEY` if set. Chat, image and video lists are
+   * public; the embedding list needs a key.
+   */
   apiKey?: string;
   baseURL?: string;
   fetch?: FetchFunction;

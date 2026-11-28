@@ -1,11 +1,24 @@
 // Live tests against https://api.martllm.com. Skipped without MARTLLM_API_KEY.
-// A few small requests plus one low-cost image (about two US cents in all).
-import { generateImage, generateText, Output, stepCountIs, streamText, tool } from 'ai';
+// A few small requests, one embedding, one low-cost image and one 5-second
+// 720p video (about five US cents in all).
+import {
+  embed,
+  experimental_generateVideo as generateVideo,
+  generateImage,
+  generateText,
+  Output,
+  stepCountIs,
+  streamText,
+  tool,
+} from 'ai';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { listModels, martllm } from '../src/index';
 
 const MODEL = process.env.MARTLLM_TEST_MODEL ?? 'deepseek/deepseek-v4-flash';
+const JSON_MODEL = process.env.MARTLLM_TEST_JSON_MODEL ?? 'google/gemini-3.1-flash-lite';
+const IMAGE_MODEL = process.env.MARTLLM_TEST_IMAGE_MODEL ?? 'venice/z-image-turbo';
+const VIDEO_MODEL = process.env.MARTLLM_TEST_VIDEO_MODEL ?? 'meta-llama/muse-video';
 const live = describe.skipIf(!process.env.MARTLLM_API_KEY);
 
 live('MartLLM live', () => {
@@ -45,7 +58,7 @@ live('MartLLM live', () => {
 
   it('structured output', async () => {
     const { output } = await generateText({
-      model: martllm(MODEL),
+      model: martllm(JSON_MODEL),
       output: Output.object({ schema: z.object({ name: z.string(), age: z.number() }) }),
       prompt: 'Ada is 36 years old. Extract the person.',
     });
@@ -55,12 +68,35 @@ live('MartLLM live', () => {
 
   it('generateImage', async () => {
     const { image } = await generateImage({
-      model: martllm.imageModel('black-forest-labs/flux.2-klein-4b'),
+      model: martllm.imageModel(IMAGE_MODEL),
       prompt: 'A red bicycle on a white background',
       size: '1024x1024',
     });
     expect(image.uint8Array.byteLength).toBeGreaterThan(1000);
   }, 180_000);
+
+  it('embed', async () => {
+    const { embedding } = await embed({
+      model: martllm.embeddingModel('openai/text-embedding-3-small'),
+      value: 'hello',
+    });
+    expect(embedding.length).toBeGreaterThan(100);
+  }, 60_000);
+
+  it('generateVideo (5 s, 720p)', async () => {
+    const { video, providerMetadata } = await generateVideo({
+      model: martllm.videoModel(VIDEO_MODEL),
+      prompt: 'A red ball bouncing on green grass',
+      duration: 5,
+      resolution: '1280x720',
+      aspectRatio: '16:9',
+      generateAudio: true,
+      poll: { intervalMs: 5_000, timeoutMs: 600_000 },
+    });
+    expect(video.mediaType).toBe('video/mp4');
+    expect(video.uint8Array.byteLength).toBeGreaterThan(10_000);
+    console.log('video job', providerMetadata.martllm);
+  }, 620_000);
 
   it('listModels', async () => {
     const models = await listModels();

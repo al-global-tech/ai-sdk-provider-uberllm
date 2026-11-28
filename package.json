@@ -1,28 +1,28 @@
 {
-  "name": "ai-sdk-provider-martllm",
-  "version": "0.1.0",
-  "description": "MartLLM provider for the Vercel AI SDK: hundreds of chat models and image models with one OpenAI-compatible API key.",
+  "name": "@martllm/ai-sdk-provider",
+  "version": "1.0.0",
+  "description": "MartLLM provider for the Vercel AI SDK: chat, tool calls, structured output, embeddings, images and video from one API key.",
   "license": "MIT",
-  "author": "AL Global LLC <support@uberllm.dev>",
+  "author": "MartLLM <contact@martllm.com>",
   "homepage": "https://martllm.com/docs/ai-sdk",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/al-global-tech/ai-sdk-provider-uberllm.git"
+    "url": "git+https://github.com/al-global-tech/ai-sdk-provider-martllm.git"
   },
   "bugs": {
-    "url": "https://github.com/al-global-tech/ai-sdk-provider-uberllm/issues"
+    "url": "https://github.com/al-global-tech/ai-sdk-provider-martllm/issues"
   },
   "keywords": [
     "martllm",
     "ai",
     "ai-sdk",
     "vercel-ai-sdk",
+    "ai-sdk-provider",
     "llm",
     "openai-compatible",
-    "provider",
-    "deepseek",
-    "claude",
-    "gemini"
+    "image-generation",
+    "video-generation",
+    "embeddings"
   ],
   "type": "module",
   "sideEffects": false,
@@ -49,20 +49,19 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run test/unit.test.ts",
     "test:live": "vitest run test/live.test.ts",
-    "prepublishOnly": "npm run typecheck && npm run build && npm test",
-    "prepare": "tsup"
+    "prepublishOnly": "npm run typecheck && npm run build && npm test"
   },
   "dependencies": {
-    "@ai-sdk/openai-compatible": "^3.0.90",
-    "@ai-sdk/provider": "^4.0.37",
-    "@ai-sdk/provider-utils": "^5.0.79"
+    "@ai-sdk/openai-compatible": "^3.0.96",
+    "@ai-sdk/provider": "^4.0.39",
+    "@ai-sdk/provider-utils": "^5.0.85"
   },
   "peerDependencies": {
     "zod": "^3.25.76 || ^4.1.8"
   },
   "devDependencies": {
-    "@types/node": "^26.6.6",
-    "ai": "^7.0.170",
+    "@types/node": "^22.20.5",
+    "ai": "^7.0.184",
     "tsup": "^9.0.0",
     "typescript": "^5.9.3",
     "vitest": "^5.1.0",

@@ -1,17 +1,20 @@
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
-import {
-  type ImageModelV4,
-  type LanguageModelV4,
-  NoSuchModelError,
-  type ProviderV4,
+import type {
+  EmbeddingModelV4,
+  ImageModelV4,
+  LanguageModelV4,
+  ProviderV4,
 } from '@ai-sdk/provider';
 import {
   type FetchFunction,
   type Resolvable,
   loadApiKey,
   resolve,
+  withUserAgentSuffix,
   withoutTrailingSlash,
 } from '@ai-sdk/provider-utils';
+import { MartLLMVideoModel, type MartLLMVideoModelId } from './video-model';
+import { VERSION } from './version';
 
 export const MARTLLM_BASE_URL = 'https://api.martllm.com/v1';
 
@@ -44,6 +47,19 @@ export type MartLLMImageModelId =
   | 'google/imagen-4'
   | 'google/imagen-4-fast'
   | 'venice/z-image-turbo'
+  | (string & {});
+
+/**
+ * Embedding model ids. `GET /v1/models?type=embedding` (with your key) lists
+ * every one on sale.
+ */
+export type MartLLMEmbeddingModelId =
+  | 'openai/text-embedding-3-small'
+  | 'openai/text-embedding-3-large'
+  | 'qwen/qwen3-embedding-8b'
+  | 'voyage/voyage-3.5'
+  | 'google/gemini-embedding-001'
+  | 'cohere/embed-v4.0'
   | (string & {});
 
 export interface MartLLMProviderSettings {
@@ -101,18 +117,28 @@ export interface MartLLMProvider extends ProviderV4 {
   /** An image model (`/v1/images/generations`), for `generateImage`. */
   imageModel(modelId: MartLLMImageModelId): ImageModelV4;
 
-  /** MartLLM has no embeddings endpoint; this always throws. */
-  embeddingModel(modelId: string): never;
+  /** An embedding model (`/v1/embeddings`), for `embed` and `embedMany`. */
+  embeddingModel(modelId: MartLLMEmbeddingModelId): EmbeddingModelV4;
 
-  /** @deprecated Use `embeddingModel` instead. Always throws. */
-  textEmbeddingModel(modelId: string): never;
+  /** @deprecated Use `embeddingModel` instead. */
+  textEmbeddingModel(modelId: MartLLMEmbeddingModelId): EmbeddingModelV4;
+
+  /**
+   * A video model (`/v1/video/generations`), for `experimental_generateVideo`.
+   * The SDK starts the job, polls it (or waits for a callback with `webhook`)
+   * and hands back the file.
+   */
+  videoModel(modelId: MartLLMVideoModelId): MartLLMVideoModel;
+
+  /** Same as `videoModel`. */
+  video(modelId: MartLLMVideoModelId): MartLLMVideoModel;
 }
 
 /**
  * Create a MartLLM provider for the Vercel AI SDK.
  *
  * ```ts
- * import { createMartLLM } from 'ai-sdk-provider-martllm';
+ * import { createMartLLM } from '@martllm/ai-sdk-provider';
  * const martllm = createMartLLM({ apiKey: process.env.MARTLLM_API_KEY });
  * ```
  */
@@ -135,34 +161,40 @@ export function createMartLLM(
     ...options.headers,
   };
 
+  // Read lazily, so importing the default instance never throws.
+  const apiKey = async () =>
+    loadApiKey({
+      apiKey: (await resolve(options.apiKey)) ?? oldEnvKey(),
+      environmentVariableName: 'MARTLLM_API_KEY',
+      description: 'MartLLM',
+    });
+
   const base = createOpenAICompatible<
     MartLLMChatModelId,
     string,
-    string,
+    MartLLMEmbeddingModelId,
     MartLLMImageModelId
   >({
     name: 'martllm',
     baseURL,
-    // Read lazily, so importing the default instance never throws.
-    apiKey: async () =>
-      loadApiKey({
-        apiKey: (await resolve(options.apiKey)) ?? oldEnvKey(),
-        environmentVariableName: 'MARTLLM_API_KEY',
-        description: 'MartLLM',
-      }),
-    headers,
+    apiKey,
+    headers: withUserAgentSuffix(headers, `martllm-ai-sdk-provider/${VERSION}`),
     includeUsage: true,
     supportsStructuredOutputs: options.supportsStructuredOutputs ?? true,
     fetch: options.fetch,
   });
 
-  const noEmbeddings = (modelId: string): never => {
-    throw new NoSuchModelError({
-      modelId,
-      modelType: 'embeddingModel',
-      message: 'MartLLM has no embeddings endpoint.',
+  const videoModel = (modelId: MartLLMVideoModelId) =>
+    new MartLLMVideoModel(modelId, {
+      provider: 'martllm.video',
+      baseURL,
+      headers: async () =>
+        withUserAgentSuffix(
+          { Authorization: `Bearer ${await apiKey()}`, ...headers },
+          `martllm-ai-sdk-provider/${VERSION}`,
+        ),
+      fetch: options.fetch,
     });
-  };
 
   const provider = ((modelId: MartLLMChatModelId) =>
     base.chatModel(modelId)) as MartLLMProvider;
@@ -170,8 +202,10 @@ export function createMartLLM(
   provider.languageModel = (modelId) => base.chatModel(modelId);
   provider.chatModel = (modelId) => base.chatModel(modelId);
   provider.imageModel = (modelId) => base.imageModel(modelId);
-  provider.embeddingModel = noEmbeddings;
-  provider.textEmbeddingModel = noEmbeddings;
+  provider.embeddingModel = (modelId) => base.embeddingModel(modelId);
+  provider.textEmbeddingModel = (modelId) => base.embeddingModel(modelId);
+  provider.videoModel = videoModel;
+  provider.video = videoModel;
   return provider;
 }
 

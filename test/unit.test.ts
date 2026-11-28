@@ -1,6 +1,6 @@
 // Offline tests: every request goes to a fake fetch, nothing leaves the machine.
 import { readFileSync } from 'node:fs';
-import { generateImage, generateText, Output, streamText } from 'ai';
+import { embed, experimental_generateVideo as generateVideo, generateImage, generateText, Output, streamText } from 'ai';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { createMartLLM, createUberLLM, listModels, martllm, VERSION } from '../src/index';
@@ -14,7 +14,7 @@ function fakeFetch(respond: (call: Call) => Response) {
     const call: Call = {
       url: String(input),
       headers,
-      body: init?.body ? JSON.parse(String(init.body)) : undefined,
+      body: typeof init?.body === 'string' ? JSON.parse(init.body) : undefined,
     };
     calls.push(call);
     return respond(call);
@@ -175,14 +175,160 @@ describe('createMartLLM', () => {
     expect(calls[0].body.model).toBe('black-forest-labs/flux.2-klein-4b');
   });
 
-  it('has no embeddings model', () => {
-    expect(() => martllm.embeddingModel('x')).toThrow(/no embeddings/);
-    expect(() => martllm.textEmbeddingModel('x')).toThrow(/no embeddings/);
+  it('embeds through /v1/embeddings', async () => {
+    const { fetch, calls } = fakeFetch(() =>
+      Response.json({
+        object: 'list',
+        data: [{ object: 'embedding', index: 0, embedding: [0.1, 0.2] }],
+        model: 'openai/text-embedding-3-small',
+        usage: { prompt_tokens: 1, total_tokens: 1 },
+      }),
+    );
+    const p = createMartLLM({ apiKey: 'k', fetch });
+    const { embedding } = await embed({
+      model: p.embeddingModel('openai/text-embedding-3-small'),
+      value: 'hello',
+    });
+    expect(embedding).toEqual([0.1, 0.2]);
+    expect(calls[0].url).toBe('https://api.martllm.com/v1/embeddings');
+    expect(calls[0].body.input).toEqual(['hello']);
   });
 
   it('identifies as the martllm provider', () => {
     expect(martllm('m').provider).toBe('martllm.chat');
+    expect(martllm.videoModel('v').provider).toBe('martllm.video');
+    expect(martllm('m').provider).toBe('martllm.chat');
     expect(martllm.specificationVersion).toBe('v4');
+  });
+});
+
+describe('video', () => {
+  const job = (status: string, extra: object = {}) =>
+    Response.json(
+      { id: 'job_1', object: 'media.job', kind: 'video', status, model: 'bytedance/seedance-1-0-lite', ...extra },
+      { status: status === 'queued' || status === 'running' ? 202 : 200 },
+    );
+  const fastPoll = { intervalMs: 1, timeoutMs: 5_000 };
+
+  it('starts a job, polls it, and downloads the file with the key', async () => {
+    let polls = 0;
+    const { fetch, calls } = fakeFetch((call) => {
+      if (call.url.endsWith('/video/generations')) return job('queued', { max_cost_usd: 0.03 });
+      if (call.url.endsWith('/video/generations/job_1')) {
+        polls++;
+        if (polls < 2) return job('running', { progress: 0.5 });
+        return job('succeeded', {
+          results: [{ artifact_index: 0, url: 'https://api.martllm.com/v1/media/artifacts/job_1/0', content_type: 'video/mp4', duration_seconds: 2 }],
+          usage: { cost_usd: 0.0224 },
+        });
+      }
+      if (call.url.endsWith('/media/artifacts/job_1/0')) return new Response(new Uint8Array([1, 2, 3]));
+      return new Response('unexpected', { status: 500 });
+    });
+    const p = createMartLLM({ apiKey: 'ull_vid', fetch });
+    const { video, providerMetadata } = await generateVideo({
+      model: p.videoModel('bytedance/seedance-1-0-lite'),
+      prompt: 'a red ball bouncing',
+      duration: 2,
+      aspectRatio: '16:9',
+      resolution: '854x480',
+      generateAudio: false,
+      providerOptions: { martllm: { max_cost: 0.05, models: ['vidu/viduq3-turbo-text-to-video'] } },
+      poll: fastPoll,
+    });
+    expect([...video.uint8Array]).toEqual([1, 2, 3]);
+    expect(video.mediaType).toBe('video/mp4');
+    const start = calls[0];
+    expect(start.url).toBe('https://api.martllm.com/v1/video/generations');
+    expect(start.headers.authorization).toBe('Bearer ull_vid');
+    expect(start.headers['idempotency-key']).toMatch(/^aisdk_vid_/);
+    expect(start.body).toEqual({
+      model: 'bytedance/seedance-1-0-lite',
+      prompt: 'a red ball bouncing',
+      duration_seconds: 2,
+      aspect_ratio: '16:9',
+      resolution: '480p',
+      audio: false,
+      max_cost: 0.05,
+      models: ['vidu/viduq3-turbo-text-to-video'],
+    });
+    const poll = calls.find((c) => c.url.endsWith('/job_1'))!;
+    expect(poll.headers['idempotency-key']).toBeUndefined();
+    const download = calls.at(-1)!;
+    expect(download.headers.authorization).toBe('Bearer ull_vid');
+    expect(providerMetadata.martllm).toMatchObject({ jobId: 'job_1', costUsd: 0.0224, status: 'succeeded' });
+  });
+
+  it('maps pictures: first/last frame and references', async () => {
+    const p = createMartLLM({ apiKey: 'k' });
+    const m = p.videoModel('v');
+    const { body, warnings } = m.getArgs({
+      prompt: 'p',
+      n: 2,
+      aspectRatio: 'adaptive',
+      resolution: undefined,
+      duration: undefined,
+      fps: 24,
+      seed: 7,
+      image: undefined,
+      frameImages: [
+        { frameType: 'first_frame', image: { type: 'url', url: 'https://x.test/a.png' } },
+        { frameType: 'last_frame', image: { type: 'file', mediaType: 'image/png', data: new Uint8Array([1]) } },
+      ],
+      inputReferences: [
+        { type: 'url', url: 'https://x.test/ref.png', mediaType: 'image/png' },
+        { type: 'url', url: 'https://x.test/clip.mp4', mediaType: 'video/mp4' },
+      ],
+      generateAudio: undefined,
+      providerOptions: {},
+      webhookUrl: 'https://hook.test/done',
+    });
+    expect(body).toEqual({
+      model: 'v',
+      prompt: 'p',
+      aspect_ratio: 'auto',
+      image_url: 'https://x.test/a.png',
+      end_image_url: 'data:image/png;base64,AQ==',
+      input_images: [{ url: 'https://x.test/ref.png', role: 'reference' }],
+      video_url: 'https://x.test/clip.mp4',
+      callback_url: 'https://hook.test/done',
+    });
+    expect(warnings.map((w) => ('feature' in w ? w.feature : w.type))).toEqual(['n', 'fps', 'seed']);
+  });
+
+  it('fails with the job error when the job does not succeed', async () => {
+    const { fetch } = fakeFetch((call) =>
+      call.url.endsWith('/video/generations')
+        ? job('queued')
+        : job('failed', { error: { type: 'content_refused', message: 'The prompt was refused.', retryable: false } }),
+    );
+    const p = createMartLLM({ apiKey: 'k', fetch });
+    await expect(
+      generateVideo({ model: p.videoModel('v'), prompt: 'x', poll: fastPoll, maxRetries: 0 }),
+    ).rejects.toThrow(/job_1: The prompt was refused/);
+  });
+
+  it('turns an API error into an APICallError with the message', async () => {
+    const { fetch } = fakeFetch(() =>
+      Response.json({ error: { type: 'insufficient_balance', message: 'Add credit to make this video.' } }, { status: 402 }),
+    );
+    const p = createMartLLM({ apiKey: 'k', fetch });
+    await expect(
+      generateVideo({ model: p.videoModel('v'), prompt: 'x', poll: fastPoll, maxRetries: 0 }),
+    ).rejects.toThrow(/Add credit/);
+  });
+
+  it('never sends the key to another host', async () => {
+    const { fetch, calls } = fakeFetch((call) => {
+      if (call.url.endsWith('/video/generations')) return job('queued');
+      if (call.url.endsWith('/job_1'))
+        return job('succeeded', { results: [{ url: 'https://elsewhere.test/v.mp4', content_type: 'video/mp4' }] });
+      return new Response(new Uint8Array([9]));
+    });
+    const p = createMartLLM({ apiKey: 'ull_secret', fetch });
+    await generateVideo({ model: p.videoModel('v'), prompt: 'x', poll: fastPoll });
+    expect(calls.at(-1)!.url).toBe('https://elsewhere.test/v.mp4');
+    expect(calls.at(-1)!.headers.authorization).toBeUndefined();
   });
 });
 
